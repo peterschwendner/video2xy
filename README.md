@@ -2,8 +2,8 @@
 
 Works best with an analog scope:
 
-Left audio channel  -> X (oscilloscope Channel I, "black")
-Right audio channel -> Y (oscilloscope Channel II, "red")
+* Left audio channel  -> X (oscilloscope Channel I, "black")
+* Right audio channel -> Y (oscilloscope Channel II, "red")
 
 Image processing pipeline:
 
