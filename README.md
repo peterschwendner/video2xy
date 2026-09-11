@@ -4,6 +4,7 @@ Left audio channel  -> X (oscilloscope Channel I, "black")
 Right audio channel -> Y (oscilloscope Channel II, "red")
 
 Image processing pipeline:
+
     grayscale
     optional CLAHE
     Gaussian blur
@@ -23,7 +24,9 @@ through the sound card in real time.
 Dependencies:
 
     pip install numpy opencv-python
+
 Optional for --play:
+
     pip install sounddevice
 
 Usage:
