@@ -1,5 +1,7 @@
 Convert video frames into a stereo XY oscilloscope signal.
 
+Works best with an analog scope.
+
 Left audio channel  -> X (oscilloscope Channel I, "black")
 Right audio channel -> Y (oscilloscope Channel II, "red")
 
