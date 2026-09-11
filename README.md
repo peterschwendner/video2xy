@@ -21,6 +21,7 @@ The resulting XY trajectory is repeated at --trace-hz and encoded as
 through the sound card in real time.
 
 Dependencies:
+
     pip install numpy opencv-python
 Optional for --play:
     pip install sounddevice
