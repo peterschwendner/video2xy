@@ -5,3 +5,9 @@ __pycache__/
 *.wav
 *.mp4
 tmp*/
+.coverage*
+!.coveragerc
+coverage.json
+build/
+dist/
+*.egg-info/

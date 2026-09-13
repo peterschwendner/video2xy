@@ -59,7 +59,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import math
+import operator
 import sys
 import time
 import wave
@@ -75,9 +77,20 @@ def parse_source(s: str):
 
 
 class FrameSampleClock:
-    """Generate integer frame sample counts without long-term drift."""
+    """Difference rounded cumulative totals for 0 < fps <= sample_rate.
+
+    At least one sample per video frame is required. The accumulator uses
+    floating point; the half-sample timing bound assumes exact arithmetic.
+    """
     def __init__(self, sample_rate: int, fps: float):
+        sample_rate = operator.index(sample_rate)
+        if sample_rate <= 0:
+            raise ValueError("sample_rate must be positive")
+        if not math.isfinite(fps) or not (0 < fps <= sample_rate):
+            raise ValueError("fps must be finite and in (0, sample_rate]")
         self.samples_per_frame = float(sample_rate) / float(fps)
+        if not math.isfinite(self.samples_per_frame):
+            raise ValueError("fps yields an unsupported frame sample count")
         self.target_total = 0.0
         self.written_total = 0
 
@@ -86,7 +99,7 @@ class FrameSampleClock:
         new_total = int(round(self.target_total))
         n = new_total - self.written_total
         self.written_total = new_total
-        return max(n, 1)
+        return n
 
 
 def preprocess_edges(
@@ -99,8 +112,10 @@ def preprocess_edges(
     canny_low: int,
     canny_high: int,
     close_iters: int,
+    *,
+    clahe_operator: cv2.CLAHE | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Resize frame and create a robust binary edge map."""
+    """Resize and select edges; an optional CLAHE object reuses configured state."""
     h0, w0 = frame.shape[:2]
     if width > 0 and w0 != width:
         scale = width / float(w0)
@@ -110,7 +125,9 @@ def preprocess_edges(
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     if clahe_clip > 0:
-        clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(8, 8))
+        clahe = clahe_operator
+        if clahe is None:
+            clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
 
     blur_ksize = max(1, int(blur_ksize))
@@ -184,15 +201,6 @@ def polyline_length(points: np.ndarray, closed: bool = True) -> float:
     return float(np.linalg.norm(np.diff(q, axis=0), axis=1).sum())
 
 
-def rotate_closed_contour_to_nearest(
-    contour: np.ndarray, target: np.ndarray
-) -> np.ndarray:
-    """Rotate contour vertex order so it begins nearest target."""
-    d2 = np.sum((contour - target) ** 2, axis=1)
-    i = int(np.argmin(d2))
-    return np.vstack([contour[i:], contour[:i]])
-
-
 def order_contours(contours: list[np.ndarray]) -> list[np.ndarray]:
     """
     Greedy contour ordering.
@@ -231,12 +239,24 @@ def order_contours(contours: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def resample_closed_contour(points: np.ndarray, n: int) -> np.ndarray:
-    """Sample a closed polygon approximately uniformly in arc length."""
-    n = max(int(n), 2)
+    """Sample a polygon at n >= 2 arc-length targets including closure.
+
+    Left insertion preserves the original loop's strict-less-than boundary
+    rule, including coincident cumulative lengths after float32 rounding.
+    """
+    n = operator.index(n)
+    points = np.asarray(points, dtype=np.float32)
+    if n < 2:
+        raise ValueError("a contour needs at least two samples")
+    if (points.ndim != 2 or points.shape[1] != 2 or len(points) == 0
+            or not np.isfinite(points).all()):
+        raise ValueError("points must be a nonempty finite array with shape (m, 2)")
 
     p = np.vstack([points, points[0]]).astype(np.float32)
     seg = np.linalg.norm(np.diff(p, axis=0), axis=1)
     total = float(seg.sum())
+    if not math.isfinite(total):
+        raise ValueError("contour perimeter must be finite")
 
     if total <= 1e-12:
         return np.repeat(p[:1], n, axis=0)
@@ -244,18 +264,13 @@ def resample_closed_contour(points: np.ndarray, n: int) -> np.ndarray:
     cumulative = np.concatenate([[0.0], np.cumsum(seg)])
     targets = np.linspace(0.0, total, n, endpoint=True)
 
-    out = np.empty((n, 2), dtype=np.float32)
-    idx = 0
-
-    for k, t in enumerate(targets):
-        while idx + 1 < len(cumulative) - 1 and cumulative[idx + 1] < t:
-            idx += 1
-
-        denom = cumulative[idx + 1] - cumulative[idx]
-        u = 0.0 if denom <= 1e-12 else (t - cumulative[idx]) / denom
-        out[k] = p[idx] * (1.0 - u) + p[idx + 1] * u
-
-    return out
+    idx = np.searchsorted(cumulative, targets, side="left") - 1
+    np.clip(idx, 0, len(seg) - 1, out=idx)
+    denom = cumulative[idx + 1] - cumulative[idx]
+    safe = np.where(denom <= 1e-12, 1.0, denom)
+    u = np.where(denom <= 1e-12, 0.0, (targets - cumulative[idx]) / safe)
+    return (p[idx] * (1.0 - u)[:, None]
+            + p[idx + 1] * u[:, None]).astype(np.float32)
 
 
 class ContourTracker:
@@ -343,32 +358,42 @@ def allocate_samples(
     total: int,
     min_each: int,
 ) -> np.ndarray:
-    """Allocate exactly total samples among contours."""
+    """Allocate exactly total with a hard minimum of min_each >= 2.
+
+    Lengths must be finite and nonnegative. An all-zero set shares the
+    remainder equally, with ties assigned in input order. Infeasible budgets
+    are rejected rather than silently reducing the configured minimum.
+    """
+    total = operator.index(total)
+    min_each = operator.index(min_each)
+    lengths = np.asarray(lengths, dtype=np.float64)
+    if lengths.ndim != 1 or not np.isfinite(lengths).all() or np.any(lengths < 0):
+        raise ValueError("lengths must be a finite nonnegative vector")
+    if total < 0 or min_each < 2:
+        raise ValueError("total must be nonnegative and min_each at least two")
     m = len(lengths)
     if m == 0:
+        if total != 0:
+            raise ValueError("a nonzero budget requires at least one contour")
         return np.zeros(0, dtype=int)
-
-    min_each = max(2, int(min_each))
+    if total < m * min_each:
+        raise ValueError("sample budget cannot meet the minimum for every contour")
     base = np.full(m, min_each, dtype=int)
     remaining = total - int(base.sum())
-
-    if remaining < 0:
-        # Caller normally avoids this, but keep behaviour safe.
-        base[:] = 2
-        remaining = total - int(base.sum())
-
-    if remaining <= 0:
-        # Adjust to exact total if possible.
-        while base.sum() > total:
-            i = int(np.argmax(base))
-            if base[i] <= 2:
-                break
-            base[i] -= 1
-        while base.sum() < total:
-            base[int(np.argmax(lengths))] += 1
+    if remaining == 0:
         return base
-
-    weights = lengths / max(float(lengths.sum()), 1e-12)
+    if not np.any(lengths):
+        quotient, remainder = divmod(remaining, m)
+        base += quotient
+        base[:remainder] += 1
+        return base
+    with np.errstate(over="ignore"):
+        length_sum = float(lengths.sum())
+    if math.isfinite(length_sum):
+        weights = lengths / length_sum
+    else:
+        scaled = lengths / lengths.max()
+        weights = scaled / scaled.sum()
     raw = weights * remaining
     add = np.floor(raw).astype(int)
     counts = base + add
@@ -380,6 +405,17 @@ def allocate_samples(
             counts[i] += 1
 
     return counts
+
+
+def validate_scan_budget(n_trace: int, jump_samples: int, min_samples: int) -> None:
+    """Require a scan budget that can draw at least one complete contour."""
+    n_trace, jump_samples, min_samples = map(
+        operator.index, (n_trace, jump_samples, min_samples)
+    )
+    if jump_samples < 1 or min_samples < 4:
+        raise ValueError("jump samples must be >= 1 and contour minimum >= 4")
+    if n_trace < jump_samples + min_samples:
+        raise ValueError("scan length must cover one contour minimum plus its jump")
 
 
 def pixel_to_scope_xy(
@@ -422,21 +458,17 @@ def build_trace(
     min_samples_per_contour: int,
     preserve_order: bool = False,
 ) -> np.ndarray:
-    """Build exactly one periodic XY scan trajectory."""
-    if n_trace < 8 or not contours:
+    """Build exactly one scan; reject settings that cannot fit a contour."""
+    validate_scan_budget(n_trace, jump_samples, min_samples_per_contour)
+    if not contours:
         return np.zeros((n_trace, 2), dtype=np.float32)
 
     if not preserve_order:
         contours = order_contours(contours)
 
-    jump_samples = max(1, int(jump_samples))
-    min_samples_per_contour = max(4, int(min_samples_per_contour))
-
     # There is one jump after every contour, including the final jump back
     # to the first contour's start point.
-    max_n_contours = max(
-        1, n_trace // (min_samples_per_contour + jump_samples)
-    )
+    max_n_contours = n_trace // (min_samples_per_contour + jump_samples)
     contours = contours[:max_n_contours]
 
     lengths = np.array(
@@ -445,11 +477,6 @@ def build_trace(
     )
 
     visible_budget = n_trace - len(contours) * jump_samples
-    if visible_budget < 2 * len(contours):
-        contours = contours[:1]
-        lengths = lengths[:1]
-        visible_budget = n_trace - jump_samples
-
     counts = allocate_samples(
         lengths, visible_budget, min_samples_per_contour
     )
@@ -474,37 +501,38 @@ def build_trace(
 
     trace_px = np.vstack(pieces)
 
-    # Defensive exact-length correction.
-    if len(trace_px) > n_trace:
-        trace_px = trace_px[:n_trace]
-    elif len(trace_px) < n_trace:
-        pad = np.repeat(trace_px[-1:], n_trace - len(trace_px), axis=0)
-        trace_px = np.vstack([trace_px, pad])
+    if len(trace_px) != n_trace:
+        raise RuntimeError("sample allocation violated the scan-length invariant")
 
     return pixel_to_scope_xy(
         trace_px, width, height, scope_aspect, amplitude
     )
 
 
-class LiveTracePlayer:
-    """Repeat the latest scan independently of camera/processing speed.
+class TraceRepeater:
+    """Repeat scans continuously and adopt pending geometry at scan boundaries.
 
-    Published arrays are immutable after publication. The callback takes a
-    reference at a scan boundary, so updates never splice two scan shapes.
+    File rendering and the live callback share this scheduling policy.
+    Publications own an immutable copy and must retain the configured shape.
     """
 
     def __init__(self, n_trace: int):
+        n_trace = operator.index(n_trace)
+        if n_trace < 1:
+            raise ValueError("scan length must be positive")
+        self.n_trace = n_trace
         self.pending = np.zeros((n_trace, 2), dtype=np.float32)
         self.active = self.pending
         self.position = 0
-        self.underflows = 0
 
     def publish(self, trace: np.ndarray):
-        self.pending = trace.copy()
+        owned = np.array(trace, dtype=np.float32, copy=True)
+        if owned.shape != (self.n_trace, 2) or not np.isfinite(owned).all():
+            raise ValueError("published trace must be finite with shape (n_trace, 2)")
+        owned.flags.writeable = False
+        self.pending = owned
 
-    def callback(self, outdata, frames, time_info, status):
-        if status.output_underflow:
-            self.underflows += 1
+    def _fill(self, outdata: np.ndarray, frames: int) -> None:
         offset = 0
         while offset < frames:
             if self.position == 0:
@@ -514,14 +542,27 @@ class LiveTracePlayer:
             offset += count
             self.position = (self.position + count) % len(self.active)
 
+    def read(self, n_samples: int) -> np.ndarray:
+        """Render the next samples, retaining phase across calls."""
+        n_samples = operator.index(n_samples)
+        if n_samples < 0:
+            raise ValueError("sample count must be nonnegative")
+        output = np.empty((n_samples, 2), dtype=np.float32)
+        self._fill(output, n_samples)
+        return output
 
-def repeat_trace(trace: np.ndarray, n_samples: int) -> np.ndarray:
-    """Repeat/truncate a periodic trace to fill one video-frame duration."""
-    if len(trace) == 0:
-        return np.zeros((n_samples, 2), dtype=np.float32)
 
-    reps = int(math.ceil(n_samples / len(trace)))
-    return np.tile(trace, (reps, 1))[:n_samples].astype(np.float32, copy=False)
+class LiveTracePlayer(TraceRepeater):
+    """Drive the continuous repeater from a sounddevice output callback."""
+
+    def __init__(self, n_trace: int):
+        super().__init__(n_trace)
+        self.underflows = 0
+
+    def callback(self, outdata, frames, time_info, status):
+        if status.output_underflow:
+            self.underflows += 1
+        self._fill(outdata, frames)
 
 
 def float_to_pcm16(xy: np.ndarray) -> bytes:
@@ -551,10 +592,13 @@ def build_argparser() -> argparse.ArgumentParser:
         description="Convert video contours to stereo XY oscilloscope audio."
     )
     p.add_argument("input", help="Video filename or camera index, e.g. 0")
-    p.add_argument(
-        "-o", "--output", default="xy_scope.wav",
-        help="Output stereo WAV file. Use '' to disable file output."
+    output = p.add_mutually_exclusive_group()
+    output.add_argument(
+        "-o", "--output", default=None,
+        help="Stereo WAV path. Default: xy_scope.wav for files, no WAV for cameras."
     )
+    output.add_argument("--no-output", action="store_true",
+                        help="Disable WAV output; an empty --output also disables it.")
     p.add_argument("--play", action="store_true",
                    help="Play generated XY audio live via sounddevice.")
     p.add_argument("--device", default=None,
@@ -586,7 +630,7 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="CLAHE clip limit; 0 disables.")
     p.add_argument("--blur", type=int, default=5,
                    help="Gaussian blur kernel size.")
-    p.add_argument("--sobel-ksize", type=int, default=3)
+    p.add_argument("--sobel-ksize", type=int, choices=(1, 3, 5, 7), default=3)
     p.add_argument(
         "--sobel-percentile", type=float, default=72.0,
         help="Keep Sobel responses above this percentile."
@@ -619,47 +663,73 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--preview", action="store_true")
     p.add_argument(
         "--max-seconds", type=float, default=0.0,
-        help="Stop after this duration; 0 means until video ends/Ctrl-C."
+        help="Nominal video seconds to process; 0 means until EOF/Ctrl-C."
     )
     return p
 
 
-def main() -> int:
-    args = build_argparser().parse_args()
-
+def validate_arguments(args: argparse.Namespace) -> int:
+    """Validate independent and joint CLI constraints before opening resources."""
+    for name in ("fps", "trace_hz", "scope_aspect", "amplitude", "clahe",
+                 "sobel_percentile", "min_perimeter", "tracking_distance",
+                 "epsilon", "max_seconds"):
+        if not math.isfinite(getattr(args, name)):
+            raise ValueError(f"--{name.replace('_', '-')} must be finite")
     if not (0.0 < args.amplitude <= 1.0):
         raise ValueError("--amplitude must be in (0, 1]")
     if args.trace_hz <= 0:
         raise ValueError("--trace-hz must be > 0")
     if args.sample_rate < 8000:
         raise ValueError("--sample-rate is implausibly low")
+    if not (0 <= args.fps <= args.sample_rate):
+        raise ValueError("--fps must be zero (automatic) or in (0, sample-rate]")
+    if args.fps > 0:
+        FrameSampleClock(args.sample_rate, args.fps)
+    if args.scope_aspect <= 0:
+        raise ValueError("--scope-aspect must be positive")
+    if args.width != 0 and args.width < 2:
+        raise ValueError("--width must be zero (original size) or at least two")
+    if args.clahe < 0 or args.blur < 1 or args.close_iters < 0:
+        raise ValueError("CLAHE/closing must be nonnegative and blur at least one")
+    if not (0 <= args.sobel_percentile <= 100):
+        raise ValueError("--sobel-percentile must be in [0, 100]")
+    if not (0 <= args.canny_low <= args.canny_high):
+        raise ValueError("Canny thresholds must satisfy 0 <= low <= high")
+    if args.min_perimeter < 0 or args.epsilon < 0 or args.max_contours < 1:
+        raise ValueError("perimeter/epsilon must be nonnegative and max-contours positive")
     if not (0 < args.tracking_distance <= 1):
         raise ValueError("--tracking-distance must be in (0, 1]")
-    tracker = None if args.no_tracking else ContourTracker(args.tracking_distance)
+    if args.max_seconds < 0:
+        raise ValueError("--max-seconds must be nonnegative")
+    scan_samples = args.sample_rate / args.trace_hz
+    if not math.isfinite(scan_samples):
+        raise ValueError("--trace-hz yields an unsupported scan length")
+    n_trace = max(16, int(round(scan_samples)))
+    validate_scan_budget(n_trace, args.jump_samples, args.min_samples_per_contour)
+    return n_trace
 
-    source = parse_source(args.input)
-    cap = cv2.VideoCapture(source)
-    if not cap.isOpened():
-        print(f"Could not open input: {args.input}", file=sys.stderr)
-        return 2
 
-    fps = args.fps if args.fps > 0 else float(cap.get(cv2.CAP_PROP_FPS))
-    if not np.isfinite(fps) or fps <= 1e-3:
-        fps = 30.0
-        print("Input FPS unavailable; using 30 fps.", file=sys.stderr)
+def resolve_output(args: argparse.Namespace) -> str | None:
+    """Keep file export convenient while making camera WAV recording opt-in."""
+    if args.no_output or args.output == "":
+        return None
+    if args.output is not None:
+        return args.output
+    return None if isinstance(parse_source(args.input), int) else "xy_scope.wav"
 
-    n_trace = max(16, int(round(args.sample_rate / args.trace_hz)))
-    clock = FrameSampleClock(args.sample_rate, fps)
 
-    wav = None
-    if args.output:
-        wav = wave.open(str(Path(args.output)), "wb")
-        wav.setnchannels(2)
-        wav.setsampwidth(2)
-        wav.setframerate(args.sample_rate)
+def main() -> int:
+    parser = build_argparser()
+    args = parser.parse_args()
+    try:
+        n_trace = validate_arguments(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+    output_path = resolve_output(args)
+    if not (output_path or args.play or args.preview):
+        parser.error("select --play, --preview, or --output")
 
-    stream = None
-    player = LiveTracePlayer(n_trace)
+    sd = None
     if args.play:
         try:
             import sounddevice as sd
@@ -670,112 +740,100 @@ def main() -> int:
             )
             return 3
 
-        device = args.device
-        if isinstance(device, str) and device.isdigit():
-            device = int(device)
-
-        stream = sd.OutputStream(
-            samplerate=args.sample_rate,
-            channels=2,
-            dtype="float32",
-            device=device,
-            blocksize=0,
-            callback=player.callback,
-        )
-        stream.start()
-
-    print(
-        f"Input FPS: {fps:.6g} | audio: {args.sample_rate} Hz stereo | "
-        f"trace: {args.trace_hz:.3g} Hz ({n_trace} samples/trace)"
-    )
-
+    tracker = None if args.no_tracking else ContourTracker(args.tracking_distance)
+    player = LiveTracePlayer(n_trace)
+    exporter = TraceRepeater(n_trace)
+    clahe = (cv2.createCLAHE(clipLimit=args.clahe, tileGridSize=(8, 8))
+             if args.clahe > 0 else None)
     frame_index = 0
-    next_frame_time = time.monotonic()
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
+    with ExitStack() as resources:
+        cap = cv2.VideoCapture(parse_source(args.input))
+        resources.callback(cap.release)
+        if not cap.isOpened():
+            print(f"Could not open input: {args.input}", file=sys.stderr)
+            return 2
+        fps = args.fps if args.fps > 0 else float(cap.get(cv2.CAP_PROP_FPS))
+        if args.fps == 0 and (not math.isfinite(fps) or fps <= 1e-3):
+            fps = 30.0
+            print("Input FPS unavailable; using 30 fps.", file=sys.stderr)
+        try:
+            clock = FrameSampleClock(args.sample_rate, fps)
+        except ValueError as exc:
+            parser.error(str(exc))
 
-            processed, edges = preprocess_edges(
-                frame=frame,
-                width=args.width,
-                clahe_clip=args.clahe,
-                blur_ksize=args.blur,
-                sobel_ksize=args.sobel_ksize,
-                sobel_percentile=args.sobel_percentile,
-                canny_low=args.canny_low,
-                canny_high=args.canny_high,
-                close_iters=args.close_iters,
-            )
-            h, w = edges.shape
+        stream = None
+        if sd is not None:
+            device = args.device
+            if isinstance(device, str) and device.isdigit():
+                device = int(device)
+            stream = sd.OutputStream(samplerate=args.sample_rate, channels=2,
+                                     dtype="float32", device=device, blocksize=0,
+                                     callback=player.callback)
+            resources.callback(stream.close)
+            stream.start()
+            resources.callback(stream.stop)
 
-            contours = extract_contours(
-                edges,
-                min_perimeter=args.min_perimeter,
-                max_contours=args.max_contours,
-                epsilon_frac=args.epsilon,
-            )
-            if tracker is not None:
-                contours = tracker.update(contours, w, h)
-
-            trace = build_trace(
-                contours=contours,
-                width=w,
-                height=h,
-                n_trace=n_trace,
-                scope_aspect=args.scope_aspect,
-                amplitude=args.amplitude,
-                jump_samples=args.jump_samples,
-                min_samples_per_contour=args.min_samples_per_contour,
-                preserve_order=tracker is not None,
-            )
-
-            n_frame = clock.next_count()
-            audio = repeat_trace(trace, n_frame)
-
-            if wav is not None:
-                wav.writeframesraw(float_to_pcm16(audio))
-
-            if stream is not None:
-                player.publish(trace)
-
-            if args.preview:
-                draw_preview(processed, edges, contours)
-                key = cv2.waitKey(1) & 0xFF
-                if key in (27, ord("q")):
-                    break
-
-            frame_index += 1
-            if args.max_seconds > 0 and frame_index / fps >= args.max_seconds:
-                break
-            if stream is not None:
-                # Callback playback no longer provides blocking-write pacing.
-                # Pace fast sources, but do not try to catch up after a stall.
-                next_frame_time += 1.0 / fps
-                now = time.monotonic()
-                if next_frame_time > now:
-                    time.sleep(next_frame_time - now)
-                else:
-                    next_frame_time = now
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        cap.release()
-        if wav is not None:
-            wav.close()
-        if stream is not None:
-            stream.stop()
-            stream.close()
-            if player.underflows:
-                print(f"Audio output underruns: {player.underflows}", file=sys.stderr)
+        wav = None
+        if output_path:
+            wav = resources.enter_context(wave.open(str(Path(output_path)), "wb"))
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(args.sample_rate)
         if args.preview:
-            cv2.destroyAllWindows()
+            resources.callback(cv2.destroyAllWindows)
 
+        print(f"Input FPS: {fps:.6g} | audio: {args.sample_rate} Hz stereo | "
+              f"trace: {args.sample_rate / n_trace:.3g} Hz ({n_trace} samples/trace)")
+        next_frame_time = time.monotonic()
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                processed, edges = preprocess_edges(
+                    frame, args.width, args.clahe, args.blur, args.sobel_ksize,
+                    args.sobel_percentile, args.canny_low, args.canny_high,
+                    args.close_iters, clahe_operator=clahe)
+                h, w = edges.shape
+                contours = extract_contours(edges, args.min_perimeter,
+                                            args.max_contours, args.epsilon)
+                if tracker is not None:
+                    contours = tracker.update(contours, w, h)
+                trace = build_trace(contours, w, h, n_trace, args.scope_aspect,
+                                    args.amplitude, args.jump_samples,
+                                    args.min_samples_per_contour,
+                                    preserve_order=tracker is not None)
+
+                n_frame = clock.next_count()
+                if wav is not None:
+                    exporter.publish(trace)
+                    wav.writeframesraw(float_to_pcm16(exporter.read(n_frame)))
+                if stream is not None:
+                    player.publish(trace)
+                if args.preview:
+                    draw_preview(processed, edges, contours)
+                    if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
+                        break
+
+                frame_index += 1
+                if args.max_seconds > 0 and frame_index / fps >= args.max_seconds:
+                    break
+                if stream is not None:
+                    # A stall repeats the latest scan; the producer does not catch up.
+                    next_frame_time += 1.0 / fps
+                    now = time.monotonic()
+                    if next_frame_time > now:
+                        time.sleep(next_frame_time - now)
+                    else:
+                        next_frame_time = now
+        except KeyboardInterrupt:
+            pass
+
+    if player.underflows:
+        print(f"Audio output underruns: {player.underflows}", file=sys.stderr)
     print(f"Processed {frame_index} frames.")
-    if args.output:
-        print(f"Wrote: {args.output}")
+    if output_path:
+        print(f"Wrote: {output_path}")
     return 0
 
 
