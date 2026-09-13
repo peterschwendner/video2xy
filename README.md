@@ -80,7 +80,12 @@ The coverage runner instruments subprocesses through a temporary startup hook, c
 - Made camera WAV recording explicit and added `--no-output`.
 - Removed the unused nearest-vertex rotation helper and added packaging, regression tests, and CI.
 
+## Paper and reproducibility
+
+[Read the paper (PDF)](paper/video2xy.pdf), or browse the [LaTeX source, references, experiments, and recorded results](paper/README.md).
+
+The manuscript documents implementation commit `cc7fe7a82c60362b43f500489821624e65326bf2`, including the 29-test regression suite, resampling compatibility checks, continuous 25 fps export, and a fixed-image processing benchmark. The paper directory includes instructions for reproducing the measurements and compiling the manuscript. AI assistance is disclosed in the paper and below.
+
 ## AI assistance
 
 Peter Schwendner used OpenAI Codex for the original project and this revision. User-supplied reviews attributed to Claude informed the changes; their claims were checked against source and executed tests. AI assistance also contributed to the companion manuscript and verification scripts. The human author is responsible for the final implementation and interpretation.
-

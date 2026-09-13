@@ -1,0 +1,63 @@
+usage: video2xy [-h] [-o OUTPUT | --no-output] [--play] [--device DEVICE]
+                [--sample-rate SAMPLE_RATE] [--fps FPS] [--trace-hz TRACE_HZ]
+                [--width WIDTH] [--scope-aspect SCOPE_ASPECT]
+                [--amplitude AMPLITUDE] [--clahe CLAHE] [--blur BLUR]
+                [--sobel-ksize {1,3,5,7}]
+                [--sobel-percentile SOBEL_PERCENTILE] [--canny-low CANNY_LOW]
+                [--canny-high CANNY_HIGH] [--close-iters CLOSE_ITERS]
+                [--min-perimeter MIN_PERIMETER] [--max-contours MAX_CONTOURS]
+                [--no-tracking] [--tracking-distance TRACKING_DISTANCE]
+                [--epsilon EPSILON] [--jump-samples JUMP_SAMPLES]
+                [--min-samples-per-contour MIN_SAMPLES_PER_CONTOUR]
+                [--preview] [--max-seconds MAX_SECONDS]
+                input
+
+Convert video contours to stereo XY oscilloscope audio.
+
+positional arguments:
+  input                 Video filename or camera index, e.g. 0
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Stereo WAV path. Default: xy_scope.wav for files, no
+                        WAV for cameras.
+  --no-output           Disable WAV output; an empty --output also disables
+                        it.
+  --play                Play generated XY audio live via sounddevice.
+  --device DEVICE       sounddevice output device name/index.
+  --sample-rate SAMPLE_RATE
+  --fps FPS             Override input FPS. Useful for webcams.
+  --trace-hz TRACE_HZ   How often the complete contour drawing is retraced.
+  --width WIDTH         Internal video width; smaller is faster/cleaner.
+  --scope-aspect SCOPE_ASPECT
+                        Physical scope screen aspect ratio; HM507 graticule is
+                        ~10/8.
+  --amplitude AMPLITUDE
+                        Digital full-scale XY amplitude, 0..1.
+  --clahe CLAHE         CLAHE clip limit; 0 disables.
+  --blur BLUR           Gaussian blur kernel size.
+  --sobel-ksize {1,3,5,7}
+  --sobel-percentile SOBEL_PERCENTILE
+                        Keep Sobel responses above this percentile.
+  --canny-low CANNY_LOW
+  --canny-high CANNY_HIGH
+  --close-iters CLOSE_ITERS
+  --min-perimeter MIN_PERIMETER
+                        Discard contours shorter than this many resized
+                        pixels.
+  --max-contours MAX_CONTOURS
+  --no-tracking         Disable temporal contour tracking for comparison.
+  --tracking-distance TRACKING_DISTANCE
+                        Maximum contour motion per frame as a fraction of the
+                        image diagonal (default: 0.08).
+  --epsilon EPSILON     Polygon simplification epsilon as fraction of contour
+                        perimeter.
+  --jump-samples JUMP_SAMPLES
+                        Samples used between contours; smaller makes jump
+                        lines dimmer.
+  --min-samples-per-contour MIN_SAMPLES_PER_CONTOUR
+  --preview
+  --max-seconds MAX_SECONDS
+                        Nominal video seconds to process; 0 means until
+                        EOF/Ctrl-C.

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "C:\Users\peter\Documents\Codex\2026-09-13\us\work\updated-implementation\paper\baseline\video_to_xy_audio.py", line 783, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "C:\Users\peter\Documents\Codex\2026-09-13\us\work\updated-implementation\paper\baseline\video_to_xy_audio.py", line 700, in main
+    processed, edges = preprocess_edges(
+                       ^^^^^^^^^^^^^^^^^
+  File "C:\Users\peter\Documents\Codex\2026-09-13\us\work\updated-implementation\paper\baseline\video_to_xy_audio.py", line 126, in preprocess_edges
+    raise ValueError("--sobel-ksize must be 1, 3, 5, or 7")
+ValueError: --sobel-ksize must be 1, 3, 5, or 7

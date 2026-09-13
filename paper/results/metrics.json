@@ -1,0 +1,162 @@
+{
+  "commit": "cc7fe7a82c60362b43f500489821624e65326bf2",
+  "python": "3.12.14",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "numpy": "2.5.3",
+  "opencv": "5.0.0",
+  "matplotlib": "3.11.2",
+  "permutation": {
+    "trials": 200,
+    "seed": 20260913,
+    "tracked_mean_rmse": 0.0,
+    "tracked_max_rmse": 0.0,
+    "untracked_mean_rmse": 0.4525953897932237,
+    "untracked_max_rmse": 0.6771612826907241,
+    "untracked_nonzero_trials": 198,
+    "phase_direction_only_untracked_mean_rmse": 0.12306120352299761,
+    "phase_direction_only_untracked_max_rmse": 0.18573345246593334
+  },
+  "representation_summary": {
+    "change_threshold": 1e-06,
+    "tracked_exact_matches": 200,
+    "tracked": {
+      "trials": 200,
+      "changed_trials": 0,
+      "minimum_rmse": 0.0,
+      "maximum_rmse": 0.0,
+      "changed_minimum_rmse": null,
+      "changed_maximum_rmse": null
+    },
+    "fully_permuted_untracked": {
+      "trials": 200,
+      "changed_trials": 198,
+      "minimum_rmse": 0.0,
+      "maximum_rmse": 0.6771612826907241,
+      "changed_minimum_rmse": 0.032210612622525885,
+      "changed_maximum_rmse": 0.6771612826907241
+    },
+    "fixed_order_untracked": {
+      "trials": 200,
+      "changed_trials": 194,
+      "minimum_rmse": 0.0,
+      "maximum_rmse": 0.18573345246593334,
+      "changed_minimum_rmse": 0.032210612622525885,
+      "changed_maximum_rmse": 0.18573345246593334
+    },
+    "by_leading_contour": [
+      {
+        "contour_id": 1,
+        "perimeter_px": 220.0,
+        "trials": 66,
+        "changed_trials": 64,
+        "minimum_rmse": 0.0,
+        "maximum_rmse": 0.18573345246593334,
+        "changed_minimum_rmse": 0.032210612622525885,
+        "changed_maximum_rmse": 0.18573345246593334
+      },
+      {
+        "contour_id": 2,
+        "perimeter_px": 150.0,
+        "trials": 69,
+        "changed_trials": 69,
+        "minimum_rmse": 0.5030920381666972,
+        "maximum_rmse": 0.6771612826907241,
+        "changed_minimum_rmse": 0.5030920381666972,
+        "changed_maximum_rmse": 0.6771612826907241
+      },
+      {
+        "contour_id": 3,
+        "perimeter_px": 90.0,
+        "trials": 65,
+        "changed_trials": 65,
+        "minimum_rmse": 0.6210139366294668,
+        "maximum_rmse": 0.6487566363955137,
+        "changed_minimum_rmse": 0.6210139366294668,
+        "changed_maximum_rmse": 0.6487566363955137
+      }
+    ]
+  },
+  "translation": {
+    "displacement_px": [
+      3,
+      2
+    ],
+    "start_error_px": 0.0,
+    "trace_rmse": 0.0
+  },
+  "timing": [
+    {
+      "fps": "24",
+      "frames": 100000,
+      "frame_sample_counts": [
+        1837,
+        1838
+      ],
+      "max_prefix_error_samples": 0.5,
+      "total_samples": 183750000,
+      "final_error_samples": 0.0
+    },
+    {
+      "fps": "25",
+      "frames": 100000,
+      "frame_sample_counts": [
+        1764
+      ],
+      "max_prefix_error_samples": 0.0,
+      "total_samples": 176400000,
+      "final_error_samples": 0.0
+    },
+    {
+      "fps": "30",
+      "frames": 100000,
+      "frame_sample_counts": [
+        1470
+      ],
+      "max_prefix_error_samples": 0.0,
+      "total_samples": 147000000,
+      "final_error_samples": 0.0
+    },
+    {
+      "fps": "30000/1001",
+      "frames": 100000,
+      "frame_sample_counts": [
+        1471,
+        1472
+      ],
+      "max_prefix_error_samples": 0.5,
+      "total_samples": 147147000,
+      "final_error_samples": 0.0
+    }
+  ],
+  "raster": {
+    "input_size": [
+      320,
+      240
+    ],
+    "processed_size": [
+      480,
+      360
+    ],
+    "edge_pixels": 1376,
+    "contours": 6,
+    "vertices": [
+      4,
+      4,
+      6,
+      6,
+      21,
+      16
+    ],
+    "counts": [
+      147,
+      145,
+      124,
+      122,
+      96,
+      95
+    ],
+    "n_trace": 735,
+    "max_abs": 0.6797494888305664
+  },
+  "upstream_test_exit_code": 0
+}
