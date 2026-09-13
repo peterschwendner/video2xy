@@ -1,0 +1,41 @@
+test_audio_start_failure_closes_resources_before_wav_creation (test_signal_pipeline.CommandLineTests.test_audio_start_failure_closes_resources_before_wav_creation) ... ok
+test_camera_output_is_opt_in (test_signal_pipeline.CommandLineTests.test_camera_output_is_opt_in) ... ok
+test_invalid_options_fail_before_resources_open (test_signal_pipeline.CommandLineTests.test_invalid_options_fail_before_resources_open) ... ok
+test_invalid_reported_fps_releases_capture_before_output (test_signal_pipeline.CommandLineTests.test_invalid_reported_fps_releases_capture_before_output) ... ok
+test_invalid_sobel_does_not_overwrite_existing_output (test_signal_pipeline.CommandLineTests.test_invalid_sobel_does_not_overwrite_existing_output) ... ok
+test_static_video_export_is_continuous_at_25_fps (test_signal_pipeline.CommandLineTests.test_static_video_export_is_continuous_at_25_fps) ... ok
+test_allocation_exact_sum_and_hard_minimum (test_signal_pipeline.NumericalTests.test_allocation_exact_sum_and_hard_minimum) ... ok
+test_allocation_rejects_infeasible_or_invalid_inputs (test_signal_pipeline.NumericalTests.test_allocation_rejects_infeasible_or_invalid_inputs) ... ok
+test_cached_clahe_matches_fresh_objects (test_signal_pipeline.NumericalTests.test_cached_clahe_matches_fresh_objects) ... ok
+test_coordinate_mapping_both_aspect_branches (test_signal_pipeline.NumericalTests.test_coordinate_mapping_both_aspect_branches) ... ok
+test_feasible_traces_retain_length_and_nontrivial_geometry (test_signal_pipeline.NumericalTests.test_feasible_traces_retain_length_and_nontrivial_geometry) ... ok
+test_frame_clock_prefix_duration (test_signal_pipeline.NumericalTests.test_frame_clock_prefix_duration) ... ok
+test_frame_clock_rejects_unsupported_rates (test_signal_pipeline.NumericalTests.test_frame_clock_rejects_unsupported_rates) ... ok
+test_pcm_clipping_and_channel_order (test_signal_pipeline.NumericalTests.test_pcm_clipping_and_channel_order) ... ok
+test_resampler_degenerate_and_invalid_inputs (test_signal_pipeline.NumericalTests.test_resampler_degenerate_and_invalid_inputs) ... ok
+test_resampler_seeded_regression (test_signal_pipeline.NumericalTests.test_resampler_seeded_regression) ... ok
+test_resampler_structured_boundaries_match_original (test_signal_pipeline.NumericalTests.test_resampler_structured_boundaries_match_original) ... ok
+test_trace_budget_rejects_collapse_case (test_signal_pipeline.NumericalTests.test_trace_budget_rejects_collapse_case) ... ok
+test_export_adopts_only_latest_publication_at_boundary (test_signal_pipeline.SchedulingTests.test_export_adopts_only_latest_publication_at_boundary) ... ok
+test_export_retains_phase_across_arbitrary_reads (test_signal_pipeline.SchedulingTests.test_export_retains_phase_across_arbitrary_reads) ... ok
+test_publication_is_owned_and_validated (test_signal_pipeline.SchedulingTests.test_publication_is_owned_and_validated) ... ok
+test_detection_order_start_and_direction_do_not_change_audio (test_temporal_tracking.TrackingTests.test_detection_order_start_and_direction_do_not_change_audio) ... ok
+test_empty_frame_and_resolution_change_reset (test_temporal_tracking.TrackingTests.test_empty_frame_and_resolution_change_reset) ... ok
+test_large_motion_starts_new_track (test_temporal_tracking.TrackingTests.test_large_motion_starts_new_track) ... ok
+test_live_playback_repeats_during_camera_stall (test_temporal_tracking.TrackingTests.test_live_playback_repeats_during_camera_stall) ... ok
+test_live_update_waits_for_scan_boundary (test_temporal_tracking.TrackingTests.test_live_update_waits_for_scan_boundary) ... ok
+test_motion_and_vertex_count_change (test_temporal_tracking.TrackingTests.test_motion_and_vertex_count_change) ... ok
+test_survivors_keep_order_and_newcomers_follow (test_temporal_tracking.TrackingTests.test_survivors_keep_order_and_newcomers_follow) ... ok
+test_video_to_wav_with_and_without_tracking (test_temporal_tracking.TrackingTests.test_video_to_wav_with_and_without_tracking) ... ok
+
+----------------------------------------------------------------------
+Ran 29 tests in 6.829s
+
+OK
+Combined 6 files
+Name                   Stmts   Miss  Cover   Missing
+----------------------------------------------------
+video_to_xy_audio.py     485     51    89%   135, 139, 143, 151, 184, 199, 213, 259, 395-396, 505, 522, 575-587, 679, 681, 683, 689, 693, 695, 699, 701, 703, 706, 730, 736-741, 753-754, 757-758, 768, 774, 783, 812, 814-816, 820, 823-830, 833
+----------------------------------------------------
+TOTAL                    485     51    89%
+Wrote JSON report to C:\Users\peter\Documents\Codex\2026-09-13\us\work\video2xy\coverage.json

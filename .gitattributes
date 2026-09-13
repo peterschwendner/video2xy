@@ -1,0 +1,4 @@
+# Preserve the original comparison module and recorded measurements byte for byte.
+# Their existing whitespace is part of the historical evidence.
+paper/baseline/video_to_xy_audio.py -text -whitespace
+paper/results/** -text -whitespace

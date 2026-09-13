@@ -1,0 +1,9 @@
+# Keep the published PDF, bibliography, figures, and recorded results tracked.
+# Ignore temporary files produced when compiling or reproducing locally.
+/*.aux
+/*.log
+/*.out
+/*.blg
+/*.synctex.gz
+/reproduced-results/
+/verification-checkout/

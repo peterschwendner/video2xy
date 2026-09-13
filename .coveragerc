@@ -1,0 +1,6 @@
+[run]
+include = */video_to_xy_audio.py
+parallel = True
+
+[report]
+show_missing = True

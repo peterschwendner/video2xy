@@ -5,3 +5,10 @@ __pycache__/
 *.wav
 *.mp4
 tmp*/
+.coverage*
+!.coveragerc
+coverage.json
+!/paper/results/coverage.json
+build/
+dist/
+*.egg-info/
